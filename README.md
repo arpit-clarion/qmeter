@@ -11,7 +11,7 @@ Add below line to your Gemfile:
 ```
 gem 'qmeter', :git => 'git://github.com/arpit-clarion/qmeter.git', :group => :development
                     or
-gem 'qmeter', :git => 'git://github.com/arpit-clarion/qmeter.git', tag: 'v1.0'
+gem 'qmeter', :git => 'git://github.com/arpit-clarion/qmeter.git', tag: 'v2.0'
 
 ```
 
