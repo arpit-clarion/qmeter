@@ -17,6 +17,8 @@ module Qmeter
 
     @stats_ratio_min = thresholds['stats_ratio_min']
     @stats_ratio_max = thresholds['stats_ratio_max']
+
+    @app_data = []
   end
 
   def collect_brakeman_details
@@ -30,6 +32,19 @@ module Qmeter
         assign_warnings(warning_type, data_hash['warnings'].count)
       elsif data_hash[0].has_key?('warning_type')
         assign_warnings([data_hash[0]['warning_type']])
+      end
+    end
+  end
+
+  def collect_app_data
+    @app_data = {app_path: "/home/arpit/applications/G8way/g8way",rails_version: "3.2.11",security_warnings: 84}
+    # Breakman source file
+    file = check_and_assign_file_path('report.json')
+    if file
+      data_hash = JSON.parse(file)
+    #   ### @arvind: change array to hash and check it contain warnings or not
+      if data_hash.present? && data_hash.has_key?('scan_info')
+        @app_data =   {application: data_hash['scan_info']['app_path'].split("/").last, ruby_version: data_hash['scan_info']['ruby_version'], rails_version: data_hash['scan_info']['rails_version'], number_of_models: data_hash['scan_info']['number_of_models'], number_of_controllers: data_hash['scan_info']['number_of_controllers'], number_of_templates:  data_hash['scan_info']['number_of_templates']}
       end
     end
   end
@@ -68,6 +83,7 @@ module Qmeter
   end
 
   def generate_final_report
+    collect_app_data
     collect_metric_fu_details
     collect_brakeman_details
     @app_root = Rails.root
@@ -97,7 +113,7 @@ module Qmeter
     @brakeman_warnings_rgy = set_color(@warnings_count, @security_warnings_max,  @security_warnings_min)
     @rails_best_practices_rgy = set_color(@rails_best_practices_total, @rails_best_practices_max, @rails_best_practices_min)
     @flog_rgy = set_color(@flog_average_complexity, @flog_complexity_max, @flog_complexity_min)
-    @stats_rgy = set_color(@stats_code_to_test_ratio, @stats_ratio_max, @stats_ratio_min )
+    @stats_rgy = set_stat_color(@stats_code_to_test_ratio, @stats_ratio_max, @stats_ratio_min )
   end
 
   ### @arvind: method to check file is exist or not ###
@@ -111,56 +127,44 @@ module Qmeter
     if count.present? && count > max
       'background-color:#D00000;'
     elsif count.present? && count > min && count < max
-      'background-color:yellow;'
+      avg  = max.to_f / 2.to_f
+      low_avg = avg / 2.to_f
+      high_avg = avg + low_avg
+      if count >= high_avg 
+        'background-color:#D00000;'
+      elsif count >= avg && count < high_avg 
+        'background-color:orange;'
+      elsif count <= low_avg
+        'background-color:green;'
+      elsif count >= low_avg
+        'background-color:yellow;'
+      else
+        'background-color:#D00000;'
+      end
     else
       'background-color:#006633;'
     end
   end
 
-  def javascript_coffeescript_reports
-    system('rake jshint > config/js_cs_config/js_error_list.txt')
-    file = File.new("config/js_cs_config/js_error_list.txt", "r") if File.exists?('config/js_cs_config/js_error_list.txt')
-
-    @js_error_count = 0
-    if file.present? && file.count > 0
-      file.rewind
-      line_count = file.count
-      file.rewind
-      @js_errors = {}
-      file.each_with_index do |line, index|
-        error_details = /(?<file_name>\w+).js: line (?<line_number>\d+), col (?<column_number>\d+),/.match(line)
-        unless error_details.nil?
-          file_name = error_details[:file_name] << ".js"
-          line_number = error_details[:line_number]
-          column_number = error_details[:column_number]
-          message = line.split(',').last.strip.gsub('.',"")
-          @js_errors["#{file_name}"] = [] unless @js_errors["#{file_name}"].present?
-          @js_errors["#{file_name}"] << {line_number: line_number, column_number: column_number, message: message}
-        end
-        @js_error_count = /(?<error_count>\d+) errors/.match(line)[:error_count].to_i if (line_count - 1) == index
+  ### @arpit: send proper color according to data ###
+  def set_stat_color(count, max, min)
+    if count.present? && count > max
+      'background-color:#D00000;'
+    elsif count.present? && count > min && count < max
+      avg  = max.to_f / 2.to_f
+      low_avg = avg / 2.to_f
+      if count > avg 
+        'background-color:green;'
+      elsif count < avg && count < low_avg
+        'background-color:#D00000;'
+      elsif count < avg && count > low_avg
+        'background-color:orange;'
+      else
+        'background-color:#D00000;'
       end
+    else
+      'background-color:#006633;'
     end
 
-    coffee_listing = Coffeelint.lint_dir('app/assets/javascripts', :config_file => 'config/js_cs_config/coffeelint.json')
-
-    @cs_error_count = 0
-    coffee_listing.each_with_index do |files, index|
-      if files.present?
-        file_name = files.first.split("/").last
-        @cs_errors = {}
-        @cs_errors["#{file_name}"] = []
-        files.each_with_index do |line, index|
-          next if index == 0
-          line.each_with_index do |error, index|
-            column_number = (error["rule"] == "coffeescript_error") ? error["message"].split(":").third : ""
-            line_number = error["lineNumber"]
-            message = error["message"].split("error: ").last.split("\n").first
-            @cs_errors["#{file_name}"] << {:line_number => line_number, :column_number => column_number, :message => message}
-            @cs_error_count += 1
-          end
-        end
-      end
-    end
   end
-
 end
